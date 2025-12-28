@@ -1,0 +1,32 @@
+# Coverage
+.coverage
+htmlcov/
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+
+# pytest
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Distribution
+dist/
+build/
+*.egg-info/
+
+# uv
+uv.lock
+
+# macOS
+.DS_Store
