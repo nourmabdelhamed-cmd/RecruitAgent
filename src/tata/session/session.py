@@ -45,6 +45,7 @@ class Session:
     
     Attributes:
         id: Unique session identifier
+        recruiter_id: Identifier for the recruiter who owns this session
         position_name: The job position name (used as chat title per Req 12.2)
         language: Output language for the session (default English per Req 12.1)
         created_at: When the session was created
@@ -52,6 +53,7 @@ class Session:
         current_module: Currently active module, if any
     """
     id: str
+    recruiter_id: str = ""
     position_name: str = ""
     language: SupportedLanguage = SupportedLanguage.ENGLISH
     created_at: datetime = field(default_factory=datetime.now)
@@ -90,6 +92,21 @@ class SessionManager(Protocol):
             
         Returns:
             A new Session instance
+            
+        Raises:
+            EmptyRecruiterIDError: If recruiter_id is empty
+        """
+        ...
+    
+    @abstractmethod
+    def list_sessions(self, recruiter_id: str) -> list[Session]:
+        """List all sessions for a recruiter.
+        
+        Args:
+            recruiter_id: Identifier for the recruiter
+            
+        Returns:
+            List of sessions for the recruiter, ordered by last_activity descending
             
         Raises:
             EmptyRecruiterIDError: If recruiter_id is empty
@@ -208,6 +225,7 @@ class InMemorySessionManager:
         now = datetime.now()
         session = Session(
             id=self._id_generator(),
+            recruiter_id=recruiter_id,
             position_name="",
             language=SupportedLanguage.ENGLISH,  # Default per Requirement 12.1
             created_at=now,
@@ -219,6 +237,28 @@ class InMemorySessionManager:
             self._sessions[session.id] = session
         
         return session
+    
+    def list_sessions(self, recruiter_id: str) -> list[Session]:
+        """List all sessions for a recruiter.
+        
+        Args:
+            recruiter_id: Identifier for the recruiter
+            
+        Returns:
+            List of sessions for the recruiter, ordered by last_activity descending
+            
+        Raises:
+            EmptyRecruiterIDError: If recruiter_id is empty
+        """
+        if not recruiter_id:
+            raise EmptyRecruiterIDError("Recruiter ID cannot be empty")
+        
+        with self._lock:
+            sessions = [
+                s for s in self._sessions.values()
+                if s.recruiter_id == recruiter_id
+            ]
+            return sorted(sessions, key=lambda s: s.last_activity, reverse=True)
     
     def get_session(self, session_id: str) -> Optional[Session]:
         """Retrieve an existing session.

@@ -1,43 +1,73 @@
-# Product Overview
+---
+inclusion: always
+---
 
-Tata is GlobalConnect's Talent Acquisition Team Assistant - a conversational AI that supports recruiters through the entire recruitment lifecycle.
+# Tata Product Context
 
-## Core Concept
+Tata is GlobalConnect's Talent Acquisition Team Assistant—a conversational AI supporting recruiters through the recruitment lifecycle.
 
-- Each chat session = one recruitment project
-- The requirement profile is the backbone for all outputs
-- Stateful: artifacts created in a session are reused automatically
+## Core Domain Concepts
 
-## Key Modules
+| Concept | Description | Key Type |
+|---------|-------------|----------|
+| Session | One recruitment project; stateful with persistent artifacts | `Session` in `session/session.py` |
+| Artifact | Storable output; requires `artifact_type` property + `to_json()` | `Artifact` protocol in `memory/memory.py` |
+| RequirementProfile | Foundation artifact; most modules depend on it | `RequirementProfile` in `modules/profile/` |
 
-| Module | Purpose |
-|--------|---------|
-| A | Requirement Profile - foundation for all outputs |
-| B | Job Ad creation |
-| C | TA Screening Template |
-| D | HM Screening Template |
-| E | Headhunting Messages (LinkedIn outreach) |
-| F | Candidate Report from interview transcripts |
-| G | Funnel Report from ATS/LinkedIn data |
-| H | Job Ad Review |
-| I | D&I Review (bias-free language check) |
-| J | Calendar Invitation text |
+## Module Dependency Rules
 
-## Module Dependencies
+Always call `DependencyManager.can_execute(session_id, module)` before processing dependent modules.
 
-- B, C, D, E require Module A (Requirement Profile)
-- F requires A + C (Profile + Screening Template)
-- G, H, I, J are standalone
+**Standalone modules** (no prerequisites): `REQUIREMENT_PROFILE`, `FUNNEL_REPORT`, `JOB_AD_REVIEW`, `DI_REVIEW`, `CALENDAR_INVITE`
 
-## Language Support
+**Dependent modules**:
+- `JOB_AD`, `TA_SCREENING`, `HM_SCREENING`, `HEADHUNTING` → require `REQUIREMENT_PROFILE`
+- `CANDIDATE_REPORT` → requires `REQUIREMENT_PROFILE` + `TA_SCREENING`
 
-English (default), Swedish, Danish, Norwegian, German (du/Sie variants)
+Reference: `MODULE_DEPENDENCIES` dict in `dependency/dependency.py`
 
-## Key Constraints
+## Language & Localization
 
-- Never expose module letters (A, B, C) to users - use natural terms
-- Never ask for recruiter's personal name
-- Never invent requirements not provided by recruiter
-- No emojis in any output
-- No dash-style bullets in body text
-- Enforce banned words list in candidate-facing text
+- Use `SupportedLanguage` enum: `EN` (default), `SV`, `DA`, `NO`, `DE`
+- For German: call `get_german_formality(context)` to determine du/Sie formality
+- Default to formal (Sie) when context is ambiguous
+
+## Content Validation Rules (MANDATORY)
+
+All generated text MUST pass these checks before output:
+
+| Rule | Validation | Location |
+|------|------------|----------|
+| No emojis | `has_emojis(text)` must return `False` | `language/checker.py` |
+| No dash bullets | `has_dash_bullets(text)` must return `False` | `language/checker.py` |
+| No banned words | `check_banned_words(text, lang).has_banned_words` must be `False` | `language/checker.py` |
+| No invented content | All skills/responsibilities must trace to `ContentSource` | `modules/profile/profile.py` |
+
+## Content Generation Constraints
+
+- **Never expose internal identifiers**: Use "requirement profile" not "Module A"
+- **Never invent content**: Track all extracted content via `ContentSource` enum
+- **Never collect personal data**: Do not ask for recruiter's personal name
+- **Exactly 4 must-have skills**: `RequirementProfile.must_have_skills` is a 4-tuple
+
+## Processor Pattern
+
+Every module processor must implement:
+
+```python
+class {Name}Processor:
+    def validate(self, input_data: {Name}Input) -> ValidationResult:
+        """Validate before processing. Return errors/warnings."""
+        ...
+    
+    def process(self, input_data: {Name}Input, ...) -> {Name}Output:
+        """Process input. Call validate() first, raise InvalidInputError on failure."""
+        ...
+```
+
+## Artifact Storage
+
+Store artifacts via `MemoryManager.store(session_id, artifact)`. Artifacts must:
+1. Implement `Artifact` protocol (runtime checkable)
+2. Have `artifact_type` property returning `ArtifactType` enum value
+3. Implement `to_json()` for serialization
