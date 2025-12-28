@@ -1,20 +1,99 @@
 # Tata - Talent Acquisition Team Assistant
 
-Tata is GlobalConnect's conversational AI assistant for recruiters, supporting the full recruitment lifecycle through natural language interactions.
+Tata is GlobalConnect's conversational AI assistant for recruiters, supporting the full recruitment lifecycle through natural language interactions powered by OpenAI function calling.
 
-## What Tata Does
+## Architecture Overview
 
-Tata helps recruiters with:
+Tata follows a layered architecture with clear separation between AI orchestration, business logic, and persistence:
 
-- **Requirement Profiles** - Extract and structure job requirements from conversations
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Interface Layer                          │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
+│  │  CLI Demo   │  │  Web Chat   │  │  Programmatic API       │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────────┐
+│                      Agent Layer (OpenAI)                       │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
+│  │ TataAgent   │──│ OpenAI      │──│ ConversationManager     │  │
+│  │             │  │ Client      │  │                         │  │
+│  └──────┬──────┘  └─────────────┘  └─────────────────────────┘  │
+│         │                                                       │
+│  ┌──────┴──────┐  ┌─────────────┐                               │
+│  │ToolExecutor │──│ToolRegistry │                               │
+│  └──────┬──────┘  └─────────────┘                               │
+└─────────┼───────────────────────────────────────────────────────┘
+          │
+┌─────────┼───────────────────────────────────────────────────────┐
+│         │              Core Layer                               │
+│  ┌──────┴──────┐  ┌─────────────┐  ┌─────────────────────────┐  │
+│  │ Module      │  │ Dependency  │  │ Language                │  │
+│  │ Processors  │  │ Manager     │  │ Processor               │  │
+│  └──────┬──────┘  └─────────────┘  └─────────────────────────┘  │
+└─────────┼───────────────────────────────────────────────────────┘
+          │
+┌─────────┼───────────────────────────────────────────────────────┐
+│         │           Persistence Layer                           │
+│  ┌──────┴──────┐  ┌─────────────┐                               │
+│  │ Memory      │  │ Session     │                               │
+│  │ Manager     │  │ Manager     │                               │
+│  └─────────────┘  └─────────────┘                               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Design Patterns
+
+**Protocol → Implementation**: All managers use Protocol classes with swappable implementations for testability and flexibility:
+
+| Protocol | Implementations |
+|----------|-----------------|
+| `SessionManager` | `InMemorySessionManager`, `SQLiteSessionManager` |
+| `MemoryManager` | `InMemoryMemoryManager`, `SQLiteMemoryManager` |
+| `DependencyManager` | `InMemoryDependencyManager` |
+| `OpenAIClient` | `RealOpenAIClient`, `MockOpenAIClient` |
+| `ConversationManager` | `InMemoryConversationManager` |
+
+**Artifact Protocol**: All module outputs implement the `Artifact` protocol with `artifact_type` property and `to_json()` method for consistent storage and serialization.
+
+**Validate-then-Process**: Module processors follow a two-step pattern where `validate()` checks inputs before `process()` generates outputs.
+
+### Request Flow
+
+```
+User Message → TataAgent → OpenAI API (with tools)
+                              ↓
+                    Tool Call Response
+                              ↓
+              ToolExecutor → DependencyManager (check prerequisites)
+                              ↓
+                    Module Processor → Artifact
+                              ↓
+                    MemoryManager (store)
+                              ↓
+              OpenAI API (with tool result) → Natural Language Response
+```
+
+### Module Dependencies
+
+Modules have explicit dependencies enforced by `DependencyManager`:
+
+- **Standalone**: Requirement Profile, Funnel Report, Job Ad Review, D&I Review, Calendar Invite
+- **Require Profile**: Job Ad, TA Screening, HM Screening, Headhunting
+- **Require Profile + TA Screening**: Candidate Report
+
+## Capabilities
+
+- **Requirement Profiles** - Extract and structure job requirements
 - **Job Ad Generation** - Create professional job advertisements
 - **Job Ad Review** - Analyze and improve existing job ads
 - **D&I Review** - Check content for diversity and inclusion
-- **Screening Templates** - Generate TA and HM screening question templates
+- **Screening Templates** - Generate TA and HM interview templates
 - **Candidate Reports** - Summarize candidate evaluations
 - **Funnel Reports** - Track recruitment pipeline metrics
 - **Calendar Invites** - Generate interview scheduling content
-- **Headhunting Messages** - Create LinkedIn outreach messages
+- **Headhunting Messages** - Create LinkedIn outreach in 5 languages
 
 ## Requirements
 
@@ -24,76 +103,35 @@ Tata helps recruiters with:
 
 ## Setup
 
-1. **Clone and install dependencies:**
-
 ```bash
 git clone <repository-url>
 cd tata
 uv sync
-```
-
-2. **Configure environment:**
-
-```bash
-cp .env.example .env
-# Edit .env and add your OpenAI API key:
-# OPENAI_API_KEY=sk-your-key-here
-```
-
-3. **Verify installation:**
-
-```bash
-uv run pytest
+cp .env.example .env  # Add OPENAI_API_KEY
+uv run pytest         # Verify installation
 ```
 
 ## Usage
 
-Tata offers three ways to interact: CLI demo, persistent sessions, and web interface.
-
-### Quick Start (CLI Demo)
-
-The simplest way to try Tata:
+### CLI Demo
 
 ```bash
 uv run python demo.py
 ```
 
-This starts an interactive terminal session. Type your requests and Tata responds. Type `quit` to exit.
-
-Example prompts:
-- "Create a requirement profile for a Senior Python Developer"
-- "Review this job ad for improvements: [paste job ad]"
-- "Create a funnel report for our Data Engineer position"
-
 ### Persistent Sessions
-
-For multi-session workflows with data persistence:
 
 ```bash
 uv run python demo_full.py
 ```
 
-Features:
-- Create and resume recruitment sessions
-- Data persists across restarts (stored in `tata.db`)
-- Multi-language support (English, Swedish, Danish, Norwegian, German)
-- Session history per recruiter
-
 ### Web Interface
 
-Browser-based chat interface:
-
 ```bash
-uv run python chat_demo.py
+uv run python chat_demo.py  # Opens at http://localhost:8080
 ```
 
-Opens at http://localhost:8080. Use `--port` to change the port:
-
-```bash
-uv run python chat_demo.py --port 3000
-```
-
-### Programmatic Usage
+### Programmatic
 
 ```python
 from src.tata.agent.agent import TataAgent
@@ -104,19 +142,17 @@ from src.tata.agent.conversation import InMemoryConversationManager
 from src.tata.dependency.dependency import InMemoryDependencyManager
 from src.tata.memory.memory import InMemoryMemoryManager
 
-# Initialize components
 client = RealOpenAIClient(model="gpt-4o")
 registry = InMemoryToolRegistry()
 memory = InMemoryMemoryManager()
 deps = InMemoryDependencyManager(memory)
 conversation = InMemoryConversationManager()
 
-session_id = "my-session"
 executor = ToolExecutor(
     tool_registry=registry,
     dependency_manager=deps,
     memory_manager=memory,
-    session_id=session_id,
+    session_id="my-session",
 )
 
 agent = TataAgent(
@@ -126,61 +162,33 @@ agent = TataAgent(
     conversation_manager=conversation,
 )
 
-# Chat with Tata
-response = agent.chat("Help me create a job ad for a frontend developer")
-print(response)
+response = agent.chat("Create a requirement profile for a Python developer")
 ```
 
-For persistent storage, use SQLite managers:
+## Project Structure
 
-```python
-from src.tata.persistence import SQLiteSessionManager, SQLiteMemoryManager
-
-session_mgr = SQLiteSessionManager()  # Uses tata.db
-memory_mgr = SQLiteMemoryManager()
+```
+src/tata/
+├── agent/        # AI orchestration (TataAgent, OpenAI client, executor, registry)
+├── dependency/   # Module dependency management
+├── interaction/  # User interaction handlers
+├── language/     # Language processing (banned words, style checks)
+├── memory/       # Artifact storage (MemoryManager protocol)
+├── modules/      # Feature modules (profile, jobad, screening, report, etc.)
+├── output/       # Output generation utilities
+├── persistence/  # SQLite storage implementations
+├── session/      # Session management (SessionManager protocol)
+├── validator/    # Input validation
+└── web/          # FastAPI chat server
 ```
 
 ## Development
 
-### Running Tests
-
 ```bash
-# Run all tests
-uv run pytest
-
-# Run with coverage
-uv run pytest --cov=src/tata
-
-# Skip integration tests (requires OpenAI API)
-uv run pytest -m "not integration"
+uv run pytest                    # Run all tests
+uv run pytest --cov=src/tata     # With coverage
+uv run pytest -m "not integration"  # Skip OpenAI integration tests
 ```
-
-### Project Structure
-
-```
-src/tata/
-├── agent/        # AI orchestration (OpenAI client, executor, conversation)
-├── dependency/   # Module dependency management
-├── interaction/  # User interaction handlers
-├── language/     # Language processing (banned words, style checks)
-├── memory/       # Artifact storage
-├── modules/      # Feature modules (profile, jobad, screening, etc.)
-├── output/       # Output generation utilities
-├── persistence/  # SQLite storage implementations
-├── session/      # Session management
-├── validator/    # Input validation
-└── web/          # Web chat server
-```
-
-### Architecture
-
-Tata uses a Protocol → Implementation pattern for all managers:
-
-- `SessionManager` → `InMemorySessionManager`, `SQLiteSessionManager`
-- `MemoryManager` → `InMemoryMemoryManager`, `SQLiteMemoryManager`
-- `DependencyManager` → `InMemoryDependencyManager`
-
-Module processors follow a validate-then-process pattern with `Artifact` outputs stored via `MemoryManager`.
 
 ## License
 
