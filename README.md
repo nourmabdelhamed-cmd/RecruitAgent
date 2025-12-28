@@ -48,18 +48,50 @@ uv run pytest
 
 ## Usage
 
-### Interactive Demo
+Tata offers three ways to interact: CLI demo, persistent sessions, and web interface.
 
-Start a conversation with Tata:
+### Quick Start (CLI Demo)
+
+The simplest way to try Tata:
 
 ```bash
 uv run python demo.py
 ```
 
+This starts an interactive terminal session. Type your requests and Tata responds. Type `quit` to exit.
+
 Example prompts:
 - "Create a requirement profile for a Senior Python Developer"
 - "Review this job ad for improvements: [paste job ad]"
 - "Create a funnel report for our Data Engineer position"
+
+### Persistent Sessions
+
+For multi-session workflows with data persistence:
+
+```bash
+uv run python demo_full.py
+```
+
+Features:
+- Create and resume recruitment sessions
+- Data persists across restarts (stored in `tata.db`)
+- Multi-language support (English, Swedish, Danish, Norwegian, German)
+- Session history per recruiter
+
+### Web Interface
+
+Browser-based chat interface:
+
+```bash
+uv run python chat_demo.py
+```
+
+Opens at http://localhost:8080. Use `--port` to change the port:
+
+```bash
+uv run python chat_demo.py --port 3000
+```
 
 ### Programmatic Usage
 
@@ -99,6 +131,15 @@ response = agent.chat("Help me create a job ad for a frontend developer")
 print(response)
 ```
 
+For persistent storage, use SQLite managers:
+
+```python
+from src.tata.persistence import SQLiteSessionManager, SQLiteMemoryManager
+
+session_mgr = SQLiteSessionManager()  # Uses tata.db
+memory_mgr = SQLiteMemoryManager()
+```
+
 ## Development
 
 ### Running Tests
@@ -125,16 +166,18 @@ src/tata/
 ├── memory/       # Artifact storage
 ├── modules/      # Feature modules (profile, jobad, screening, etc.)
 ├── output/       # Output generation utilities
+├── persistence/  # SQLite storage implementations
 ├── session/      # Session management
-└── validator/    # Input validation
+├── validator/    # Input validation
+└── web/          # Web chat server
 ```
 
 ### Architecture
 
 Tata uses a Protocol → Implementation pattern for all managers:
 
-- `SessionManager` → `InMemorySessionManager`
-- `MemoryManager` → `InMemoryMemoryManager`  
+- `SessionManager` → `InMemorySessionManager`, `SQLiteSessionManager`
+- `MemoryManager` → `InMemoryMemoryManager`, `SQLiteMemoryManager`
 - `DependencyManager` → `InMemoryDependencyManager`
 
 Module processors follow a validate-then-process pattern with `Artifact` outputs stored via `MemoryManager`.
